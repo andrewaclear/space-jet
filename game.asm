@@ -43,14 +43,15 @@
 .eqv	SHIFT_SHIP_LAST		1324						# from top left of ship to bottom right = (64*5+11)*4
 # number of pixels
 .eqv	SIZE			2047						# number of pixels - 1 so can use index
+.eqv	HEIGHT			31						# height of pixels - 1 so can use index
 
 .eqv	COLOUR_NIGHT		0x00112135
 .eqv	COLOUR_STAR		0x0019324f
 # .eqv	COLOUR_NIGHT		0x00c8ddfd
 .eqv	COLOUR_RED		0x00551c3a
 .eqv	COLOUR_DARK_ROCK	0x00393f44
-# .eqv	COLOUR_BLUE		0x00304698
-.eqv	COLOUR_BLUE		0x00383bd6
+# .eqv	COLOUR_SHIP		0x00304698
+.eqv	COLOUR_SHIP		0x002764d6
 # .eqv	COLOUR_YELLOW		0x00dcff30
 # .eqv	COLOUR_YELLOW		0x005c7173
 .eqv	COLOUR_YELLOW		0x007b979a
@@ -117,22 +118,21 @@ main:
 		
 		# ------------------------------------
 		# Erase objects from the old position on the screen.
-		# clear previous ship
-		beq	$s0, $s1, main_sleep					# if ship didn't move, restart loop
-		move	$a0, $s0
-		move	$a1, $s0
-		addi	$a1, $a1, SHIFT_SHIP_LAST
-		li	$a2, -48
-		jal	clear
+			# clear previous ship
+			# beq	$s0, $s1, main_sleep				# if ship didn't move, restart loop
+			move	$a0, $s0
+			move	$a1, $s0
+			addi	$a1, $a1, SHIFT_SHIP_LAST
+			li	$a2, -48
+			jal	clear
 		# ------------------------------------
 
 		# ------------------------------------
 		# Redraw objects in the new position on the screen.
-		# redraw ship:
-			# paint new
+			# redraw ship:
 			move	$a0, $s1
-			jal	draw_ship						# jump to draw_ship and save position to $ra
-		# redraw stars:
+			jal	draw_ship					# jump to draw_ship and save position to $ra
+			# redraw stars:
 		# ------------------------------------
 
 		move 	$s0, $s1						# store previous ship position in $s0
@@ -141,6 +141,10 @@ main:
 		# At the end of each iteration, your main loop should sleep 
 		# for a short time and go back to step 1.
 		main_sleep:
+			# Wait one second (200 milliseconds)
+			li	$v0, 32
+			li	$a0, 20
+			syscall
 		# ------------------------------------
 
 		j main_loop
@@ -257,12 +261,83 @@ init_stars:
 
 # ------------------------------------
 # shift stars
+	# use:
+		# $t0: current star address
+		# $t1: address of block right after the array
+		# $t2: position of current star
+		# $t9: temp
 shift_stars:
-	# $t0: current star address
-	# $t1: address of block right after the array
+	la	$t0, stars
+	la	$t1, stars
+	addi	$t1, $t1, NUM_STARS
+	# make room on the stack to store needed values
+	addi	$sp, $sp, -16
+	sw	$ra, 12($sp)							# store this function's $ra for later	
+	
 	shift_stars_loop:
-		# only shift if they are not in the 
-	jr	$ra
+		lw	$t2, 0($t0)
+		# clear previous spot
+			move 	$a0, $t2
+			move 	$a1, $a0
+			li	$a2, -4
+			# save needed values
+			sw	$t0, 0($sp)
+			sw	$t1, 4($sp)
+			sw	$t2, 8($sp)
+			# call
+			jal	clear
+			# restore needed values
+			lw	$t0, 0($sp)
+			lw	$t1, 4($sp)
+			lw	$t2, 8($sp)
+		# only shift if they are not in the left column
+			li	$t9, SHIFT_NEXT_ROW
+			div	$t2, $t9					# $t2 / $t9
+			mfhi	$t9						# $t9 = $t2 mod $t9
+			beq	$t9, $zero, shift_stars_reset			# if the star is in the left column, we need to reset it
+			addi	$t2, $t2, -4					# else move left
+		# redraw new position
+		shift_stars_redraw:
+			move 	$a0, $t2
+			# save needed values
+			sw	$t0, 0($sp)
+			sw	$t1, 4($sp)
+			sw	$t2, 8($sp)
+			# call
+			jal	draw_star
+			# restore needed values
+			lw	$t0, 0($sp)
+			lw	$t1, 4($sp)
+			lw	$t2, 8($sp)
+		# update the position of that star and go to next star
+		sw	$t2, 0($t0)
+		addi	$t0, $t0, 4
+		# if we are at the block right after the array, we are done, else continue
+		beq	$t0, $t1, shift_stars_loop_done
+		j	shift_stars_loop
+
+		# find position for new star
+		shift_stars_reset:
+			# use random to get new value for star on the right
+			li	$v0, 42
+			li	$a0, 0
+			li	$a1, HEIGHT
+			syscall
+			# pseudo-random number is in $a0
+			# let this be the position of the current star in the right most column
+			addi	$a0, $a0, 1
+			li	$t9, SHIFT_NEXT_ROW
+			mult	$t9, $a0
+			mflo	$t9						# we got y position in left column
+			addi	$t9, $t9, -4
+			addi	$t9, $t9, DISPLAY_FIRST_ADDRESS
+			# now we have position fot new star
+			move 	$t2, $t9
+			j shift_stars_redraw		
+	shift_stars_loop_done:
+		lw	$ra, 12($sp)						# restore this functions $ra
+		addi	$sp, $sp, 16						# put the stack pointer back
+		jr	$ra
 # ------------------------------------
 
 
@@ -302,7 +377,7 @@ clear:
 # draw ship at a certain position
 	# $a0: position
 draw_ship:
-	li	$t0, COLOUR_BLUE						# $t1 = COLOUR_BLUE
+	li	$t0, COLOUR_SHIP						# $t1 = COLOUR_SHIP
 	li	$t1, COLOUR_YELLOW						# $t1 = COLOUR_YELLOW
 	li	$t2, COLOUR_RED							# $t1 = COLOUR_RED
 	
@@ -357,7 +432,7 @@ draw_ship:
 # ------------------------------------
 # draw star at given position
 	# $a0: position
-		# $t9: use temp
+		# $t0: use temp
 draw_star:
 	li	$t0, COLOUR_STAR
 	sw	$t0, 0($a0)
