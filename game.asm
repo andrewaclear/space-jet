@@ -72,6 +72,7 @@ main:
 	# clear screen
 	li	$a0, DISPLAY_FIRST_ADDRESS
 	li	$a1, DISPLAY_LAST_ADDRESS
+	li	$a2, -SHIFT_NEXT_ROW						# negative width
 	jal	clear								# jump to clear and save position to $ra
 	# ------------------------------------
 	
@@ -84,10 +85,10 @@ main:
 		# ship location
 		li	$s1, DISPLAY_MIDLFT_ADDRESS
 		li	$s0, DISPLAY_LAST_ADDRESS				# make the previous position some else (I just put the last pixel)
+		addi	$s0, $s0, -SHIFT_NEXT_ROW
+		
 		# all the stars
 		jal	init_stars
-		# j	end
-		
 
 	main_loop:
 		# ------------------------------------
@@ -101,7 +102,8 @@ main:
 		# ------------------------------------\
 		# Update obstacle location.
 		main_update:
-			# get 
+			# shift stars
+			jal shift_stars
 		# ------------------------------------
 		
 		# ------------------------------------
@@ -115,17 +117,22 @@ main:
 		
 		# ------------------------------------
 		# Erase objects from the old position on the screen.
+		# clear previous ship
 		beq	$s0, $s1, main_sleep					# if ship didn't move, restart loop
 		move	$a0, $s0
 		move	$a1, $s0
 		addi	$a1, $a1, SHIFT_SHIP_LAST
-		jal	clear							# jump to clear and save position to $ra
+		li	$a2, -48
+		jal	clear
 		# ------------------------------------
 
 		# ------------------------------------
 		# Redraw objects in the new position on the screen.
-		move	$a0, $s1
-		jal	draw_ship						# jump to draw_ship and save position to $ra
+		# redraw ship:
+			# paint new
+			move	$a0, $s1
+			jal	draw_ship						# jump to draw_ship and save position to $ra
+		# redraw stars:
 		# ------------------------------------
 
 		move 	$s0, $s1						# store previous ship position in $s0
@@ -248,6 +255,15 @@ init_stars:
 		jr	$ra							# jump to $ra
 # ------------------------------------
 
+# ------------------------------------
+# shift stars
+shift_stars:
+	# $t0: current star address
+	# $t1: address of block right after the array
+	shift_stars_loop:
+		# only shift if they are not in the 
+	jr	$ra
+# ------------------------------------
 
 
 # DRAW functions:
@@ -256,13 +272,27 @@ init_stars:
 # clear screen between given addresses
 	# $a0: start address
 	# $a1: end address
+	# $a2: negative of the width*4 of box to clear
+	# use:
+		# $t0: COLOUR_NIGHT
+		# $t1: negative increment
 clear:
 	li	$t0, COLOUR_NIGHT
+	li	$t1, 0								# increment
+	
 	clear_loop:
 		bgt	$a0, $a1, clear_loop_done
-		sw	$t0, 0($a0)
+		# if the increment is equal to the negative width, go down a row
+		beq	$t1, $a2, clear_loop_next_row
+		sw	$t0, 0($a0)						# clear $a0 colour
 		addi	$a0, $a0, 4						# $a0 = $a0 + 4
+		addi	$t1, $t1, -4						# $t1 = $t1 - 4
 		j	clear_loop						# jump to clear_loop
+	clear_loop_next_row:
+		add	$a0, $a0, $t1						# $a0 = $a0 - width*4
+		addi	$a0, $a0, SHIFT_NEXT_ROW				# set $a0 to next row
+		li	$t1, 0							# reset increment $t1 = 0
+		j clear_loop
 	clear_loop_done:
 		jr	$ra							# jump to $ra
 # ------------------------------------
