@@ -62,10 +62,10 @@
 .eqv	COLOUR_YELLOW		0x007b979a
 
 .eqv	NUM_STARS		160						# 40 stars (40*4)
-.eqv	NUM_ROCKS		20						# 5 rocks (5*4)
+.eqv	NUM_ROCKS		24						# 5 rocks (5*4)
 
 .eqv	STAR_ROCK_PARLX		3
-.eqv	WAIT_MS			12
+.eqv	WAIT_MS			5
 
 .data
 # variables
@@ -130,7 +130,7 @@ main:
 		# Check for various collisions (e.g., between ship and 
 		# obstacles).
 		main_collision:
-			# check if ship is colliding with any ship
+			# check if ship is colliding with a rock
 			# jal	rock_collide
 			
 		# ------------------------------------
@@ -262,12 +262,13 @@ keypress:
 		# $t5: top-right of current rock   --- then x_top-right
 		# $t6: bottom-left of current rock --- then y_bottom-left			# don't need bottom-right      $t6: bottom-right of current rock
 		# --
-		# $t7: corner of ship we are looking at  --- then x_ship
+		# $t7: corner of ship we are looking at
 		#      top-left of ship
 		#      top-right of ship
 		#      bottom-left of ship
 		#      bottom-right of ship
-		# $t8:                                   --- then y_ship
+		# $t8:                             --- then x_ship
+		# $t9:                             --- then y_ship
 	# assumes:
 		# $s1: contains the current ship position
 rock_collide:
@@ -324,11 +325,11 @@ rock_collide:
 		# $v0: x
 		# $v1: y
 	# use: 
-		# $t9: temp
+		# $a1: temp
 get_xy:
 	addi	$a0, $a0, -DISPLAY_FIRST_ADDRESS				# get the relative position
-	li	$t9, SHIFT_NEXT_ROW
-	div	$a0, $t9							# $a0 / $t9
+	li	$a1, SHIFT_NEXT_ROW
+	div	$a0, $a1							# $a0 / $t9
 	mflo	$v1								# $v1 = y = floor($a0 / $t9) 
 	mfhi	$v0								# $v0 = x = $a0 mod $t9 
 	jr	$ra
@@ -631,10 +632,10 @@ draw_ship:
 	li	$t1, COLOUR_YELLOW						# $t1 = COLOUR_YELLOW
 	li	$t2, COLOUR_RED							# $t1 = COLOUR_RED
 	
-	sw	$t0, 0($a0)
+	sw	$t2, 0($a0)
 	addi	$a0, $a0, SHIFT_NEXT_ROW
-	sw	$t0, 0($a0)
-	sw	$t0, 4($a0)
+	sw	$t2, 0($a0)
+	sw	$t2, 4($a0)
 	sw	$t0, 12($a0)
 	sw	$t1, 16($a0)
 	sw	$t1, 20($a0)
@@ -652,7 +653,7 @@ draw_ship:
 	sw	$t0, 40($a0)
 	sw	$t0, 44($a0)
 	addi	$a0, $a0, SHIFT_NEXT_ROW
-	sw	$t0, 0($a0)
+	# sw	$t0, 0($a0)
 	sw	$t0, 4($a0)
 	sw	$t0, 8($a0)
 	sw	$t0, 12($a0)
