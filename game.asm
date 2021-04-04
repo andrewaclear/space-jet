@@ -37,27 +37,32 @@
 .eqv	DISPLAY_FIRST_ADDRESS	0x10008000
 # width = 64, height = 32
 .eqv	DISPLAY_LAST_ADDRESS	0x10009FFC					# update this given the values below shift +(64*32-1)*4
-.eqv	DISPLAY_MIDLFT_ADDRESS	0x10008D00					# mid left spot for ship +(64*13)*4
+.eqv	DISPLAY_MIDLFT_ADDRESS	0x10008C00					# mid left spot for ship (but jump 2 aligned) +(64*12)*4
 # last address shifts
-.eqv	SHIFT_NEXT_ROW		256						# next row shift = width*4 = 64*4
+.eqv	SHIFT_NEXT_ROW		256													# next row shift = width*4 = 64*4
 .eqv	SHIFT_SHIP_LAST		1324						# from top left of ship to bottom right = (64*5+11)*4
+.eqv	SHIFT_ROCK_LAST		1564						# from top left of rock to bottom right = (64*6+7)*4
 # number of pixels
 .eqv	SIZE			2047						# number of pixels - 1 so can use index
+.eqv	ROCK_WIDTH		32						# width of rock (8*4)
+# random value ranges
 .eqv	HEIGHT			31						# height of pixels - 1 so can use index
+.eqv	ROCK_HEIGHT		7						# height of rock - 1
 
 .eqv	COLOUR_NIGHT		0x00112135
 .eqv	COLOUR_STAR		0x0019324f
 # .eqv	COLOUR_NIGHT		0x00c8ddfd
 .eqv	COLOUR_RED		0x00551c3a
-.eqv	COLOUR_DARK_ROCK	0x00393f44
+.eqv	COLOUR_ROCK_DARK	0x00424242
+.eqv	COLOUR_ROCK_LIGHT	0x006c6c6c
 # .eqv	COLOUR_SHIP		0x00304698
 .eqv	COLOUR_SHIP		0x002764d6
 # .eqv	COLOUR_YELLOW		0x00dcff30
 # .eqv	COLOUR_YELLOW		0x005c7173
 .eqv	COLOUR_YELLOW		0x007b979a
 
-.eqv	NUM_STARS		160
-.eqv	NUM_ROCKS		120
+.eqv	NUM_STARS		160						# 40 stars (40*4)
+.eqv	NUM_ROCKS		20						# 5 rocks (5*4)
 
 .data
 # variables
@@ -90,7 +95,9 @@ main:
 		
 		# all the stars
 		jal	init_stars
-
+		# initialize all the rocks positions to 0, so they can be added in slowly
+		# jal	init_rocks
+		
 	main_loop:
 		# ------------------------------------
 		# Check for keyboard input and update ship location.
@@ -105,11 +112,15 @@ main:
 		main_update:
 			# shift stars
 			jal shift_stars
+			# shift rocks
+			# jal shift_rocks
 		# ------------------------------------
 		
 		# ------------------------------------
 		# Check for various collisions (e.g., between ship and 
 		# obstacles).
+		main_collision:
+			# check if ship is colliding with any ship
 		# ------------------------------------
 		
 		# ------------------------------------
@@ -118,8 +129,9 @@ main:
 		
 		# ------------------------------------
 		# Erase objects from the old position on the screen.
+		main_clear:
 			# clear previous ship
-			# beq	$s0, $s1, main_sleep				# if ship didn't move, restart loop
+			beq	$s0, $s1, main_draw				# if ship didn't move, don't clear it
 			move	$a0, $s0
 			move	$a1, $s0
 			addi	$a1, $a1, SHIFT_SHIP_LAST
@@ -129,6 +141,7 @@ main:
 
 		# ------------------------------------
 		# Redraw objects in the new position on the screen.
+		main_draw:
 			# redraw ship:
 			move	$a0, $s1
 			jal	draw_ship					# jump to draw_ship and save position to $ra
@@ -141,7 +154,7 @@ main:
 		# At the end of each iteration, your main loop should sleep 
 		# for a short time and go back to step 1.
 		main_sleep:
-			# Wait one second (200 milliseconds)
+			# Wait one second (20 milliseconds)
 			li	$v0, 32
 			li	$a0, 20
 			syscall
@@ -188,13 +201,14 @@ keypress:
 		div	$s1, $t1						# see if ship position is divisible by the width
 		mfhi	$t9							# $t9 = $s1 mod $t1 
 		beq	$t9, $zero, keypress_done				# if it is in the left column, we can't go left
-		addi	$s1, $s1, -4						# else, move left
+		addi	$s1, $s1, -8						# else, move left
 		b keypress_done
 
 	# go up
 	key_w:
 		# make sure ship is not in top row
 		blt	$s1, $t2, keypress_done					# if $s1 is in the top row, don't go up
+		addi	$s1, $s1, -SHIFT_NEXT_ROW				# else, move up
 		addi	$s1, $s1, -SHIFT_NEXT_ROW				# else, move up
 		b keypress_done
 
@@ -205,13 +219,14 @@ keypress:
 		mfhi	$t9							# $t9 = $s1 mod $t1 
 		addi	$t1, $t1, -48						# need to check if the mod is the row size - 12*4 (width of plane-1)
 		beq	$t9, $t1, keypress_done					# if it is in the far right column, we can't go right
-		addi	$s1, $s1, 4						# else, move right
+		addi	$s1, $s1, 8						# else, move right
 		b keypress_done
 
 	# go down
 	key_s:
 		# make sure ship is not in bottom row
 		bgt	$s1, $t3, keypress_done					# if $s1 is in the bottom row, don't go down
+		addi	$s1, $s1, SHIFT_NEXT_ROW				# else, move down
 		addi	$s1, $s1, SHIFT_NEXT_ROW				# else, move down
 		b keypress_done
 
@@ -244,11 +259,11 @@ init_stars:
 		addi	$a0, $a0, DISPLAY_FIRST_ADDRESS			 	# add it to the first address of the image
 		sw	$a0, 0($t0)						# set that address to be the position of the current star
 		# save $t0 and $ra
-		sw	$t0, 0($sp)
+		# sw	$t0, 0($sp)
 		# call draw star
 		jal	draw_star
 		# restore $t0 and $ra						draw the star at $a0 position
-		lw	$t0, 0($sp)
+		# lw	$t0, 0($sp)
 		# set the next star
 		addi	$t0, $t0, 4
 		beq	$t0, $t1, init_stars_loop_done				# stop once we've set all the stars
@@ -257,6 +272,23 @@ init_stars:
 		lw	$ra, 4($sp)		
 		addi	$sp, $sp, 8
 		jr	$ra							# jump to $ra
+# ------------------------------------
+
+# ------------------------------------
+# initialize rock positions to just 0 and add them in slowly
+	# use:
+		# $t0: current star address
+		# $t1: address of block right after the array
+init_rocks:
+	la	$t0, rocks
+	la	$t1, rocks
+	addi	$t1, $t1, NUM_ROCKS
+	init_rocks_loop:
+		sw	$zero, 0($t0)
+		addi	$t0, $t0, 4
+		beq	$t0, $t1, init_rocks_loop_done
+	init_rocks_loop_done:
+		jr	$ra
 # ------------------------------------
 
 # ------------------------------------
@@ -340,6 +372,114 @@ shift_stars:
 		jr	$ra
 # ------------------------------------
 
+# ------------------------------------
+# shift rocks
+	# use:
+		# $t0: current rock address
+		# $t1: address of block right after the array
+		# $t2: position of current rock
+		# $t3: saw a 0
+		# $t9: temp
+shift_rocks:
+	la	$t0, rocks
+	la	$t1, rocks
+	addi	$t1, $t1, NUM_ROCKS
+	li	$t3, 0								# haven't seen a 0 yet
+	
+	# make room on the stack to store needed values
+	addi	$sp, $sp, -20
+	sw	$ra, 16($sp)							# store this function's $ra for later	
+	
+	shift_rocks_loop:
+		lw	$t2, 0($t0)
+		# if it is 0, we want to add just one
+		beq	$t2, $zero, shift_rocks_zero
+		# clear previous spot
+		shift_rocks_loop_clear:
+			move 	$a0, $t2
+			move 	$a1, $t2
+			addi 	$a1, $a1, SHIFT_ROCK_LAST
+			# if this sets it past the last address of the screen, then set the last to be the last
+			li	$t9, DISPLAY_LAST_ADDRESS
+			blt	$a1, $t9, shift_rocks_loop_clear_end_not
+				li	$a1, DISPLAY_LAST_ADDRESS		# if it is, set it tp the last address
+			shift_rocks_loop_clear_end_not:
+			li	$a2, -ROCK_WIDTH
+			# save needed values
+			# sw	$t0, 0($sp)
+			# sw	$t1, 4($sp)
+			# sw	$t2, 8($sp)
+			# sw	$t3, 12($sp)
+			# call
+			jal	clear
+			# restore needed values
+			# lw	$t0, 0($sp)
+			# lw	$t1, 4($sp)
+			# lw	$t2, 8($sp)
+			# lw	$t3, 12($sp)
+		# only shift if they are not in the left column
+			li	$t9, SHIFT_NEXT_ROW
+			div	$t2, $t9					# $t2 / $t9
+			mfhi	$t9						# $t9 = $t2 mod $t9
+			beq	$t9, $zero, shift_stars_reset			# if the star is in the left column, we need to reset it
+			addi	$t2, $t2, -4					# else move left
+		# redraw new position
+		shift_rocks_redraw:
+			move 	$a0, $t2
+			# save needed values
+			# sw	$t0, 0($sp)
+			# sw	$t1, 4($sp)
+			# sw	$t2, 8($sp)
+			# sw	$t3, 12($sp)
+			# call
+			jal	draw_rock
+			# restore needed values
+			# lw	$t0, 0($sp)
+			# lw	$t1, 4($sp)
+			# lw	$t2, 8($sp)
+			# lw	$t3, 12($sp)
+		# update the position of that rock and go to next star
+		shift_rocks_next:
+			sw	$t2, 0($t0)
+			addi	$t0, $t0, 4
+		# if we are at the block right after the array, we are done, else continue
+		beq	$t0, $t1, shift_rocks_loop_done
+		j	shift_rocks_loop
+
+		# find position for new star
+		shift_rocks_reset:
+			# use random to get new value for star on the right
+			li	$v0, 42
+			li	$a0, 0
+			li	$a1, NUM_ROCKS
+			syscall
+			# pseudo-random number is in $a0
+			# let this be the position of the current rock in the right most column
+			addi	$a0, $a0, 1
+			addi	$a0, $a0, ROCK_HEIGHT
+			li	$t9, SHIFT_NEXT_ROW
+			mult	$t9, $a0
+			mflo	$t9						# we got y position in left column
+			li	$a0, ROCK_HEIGHT
+			mult	$t9, $a0
+			mflo	$t9						# we got y position in left column
+			addi	$t9, $t9, -4
+			addi	$t9, $t9, DISPLAY_FIRST_ADDRESS
+			# now we have position for new star
+			move 	$t2, $t9					# put new current position in $t2
+			j shift_rocks_redraw	
+
+		shift_rocks_zero:
+			bne	$t3, $zero, shift_rocks_next			# if we've seen a 0, just skip it
+			addi	$t3, $t3, 1
+			b shift_rocks_reset					# else add a new rock
+				
+	shift_rocks_loop_done:
+		lw	$ra, 16($sp)						# restore this functions $ra
+		addi	$sp, $sp, 20						# put the stack pointer back
+		jr	$ra
+# ------------------------------------
+
 
 # DRAW functions:
 
@@ -349,24 +489,24 @@ shift_stars:
 	# $a1: end address
 	# $a2: negative of the width*4 of box to clear
 	# use:
-		# $t0: COLOUR_NIGHT
-		# $t1: negative increment
+		# $t8: COLOUR_NIGHT
+		# $t9: negative increment
 clear:
-	li	$t0, COLOUR_NIGHT
-	li	$t1, 0								# increment
+	li	$t8, COLOUR_NIGHT
+	li	$t9, 0								# increment
 	
 	clear_loop:
 		bgt	$a0, $a1, clear_loop_done
 		# if the increment is equal to the negative width, go down a row
-		beq	$t1, $a2, clear_loop_next_row
-		sw	$t0, 0($a0)						# clear $a0 colour
+		beq	$t9, $a2, clear_loop_next_row
+		sw	$t8, 0($a0)						# clear $a0 colour
 		addi	$a0, $a0, 4						# $a0 = $a0 + 4
-		addi	$t1, $t1, -4						# $t1 = $t1 - 4
+		addi	$t9, $t9, -4						# $t9 = $t9 - 4
 		j	clear_loop						# jump to clear_loop
 	clear_loop_next_row:
-		add	$a0, $a0, $t1						# $a0 = $a0 - width*4
+		add	$a0, $a0, $t9						# $a0 = $a0 - width*4
 		addi	$a0, $a0, SHIFT_NEXT_ROW				# set $a0 to next row
-		li	$t1, 0							# reset increment $t1 = 0
+		li	$t9, 0							# reset increment $t9 = 0
 		j clear_loop
 	clear_loop_done:
 		jr	$ra							# jump to $ra
@@ -432,13 +572,69 @@ draw_ship:
 # ------------------------------------
 # draw star at given position
 	# $a0: position
-		# $t0: use temp
+		# $t9: use temp
 draw_star:
-	li	$t0, COLOUR_STAR
-	sw	$t0, 0($a0)
+	li	$t9, COLOUR_STAR
+	sw	$t9, 0($a0)
 	jr	$ra
 # ------------------------------------
 
-	
+# ------------------------------------
+# draw rock
+	# $a0: position
+		# $t8: COLOUR_ROCK_DARK
+		# $t9: COLOUR_ROCK_LIGHT
+draw_rock:
+	li	$t8, COLOUR_ROCK_DARK
+	li	$t9, COLOUR_ROCK_LIGHT
+
+	sw	$t8, 8($a0)
+	sw	$t8, 12($a0)
+	sw	$t8, 16($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t9, 4($a0)
+	sw	$t9, 8($a0)
+	sw	$t8, 12($a0)
+	sw	$t8, 16($a0)
+	sw	$t8, 20($a0)
+	sw	$t8, 24($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t9, 0($a0)
+	sw	$t8, 4($a0)
+	sw	$t9, 8($a0)
+	sw	$t8, 12($a0)
+	sw	$t8, 16($a0)
+	sw	$t9, 20($a0)
+	sw	$t9, 24($a0)
+	sw	$t9, 28($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t9, 0($a0)
+	sw	$t8, 4($a0)
+	sw	$t8, 8($a0)
+	sw	$t8, 12($a0)
+	sw	$t8, 16($a0)
+	sw	$t8, 20($a0)
+	sw	$t8, 24($a0)
+	sw	$t9, 28($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t8, 4($a0)
+	sw	$t8, 8($a0)
+	sw	$t8, 12($a0)
+	sw	$t8, 16($a0)
+	sw	$t8, 20($a0)
+	sw	$t9, 24($a0)
+	sw	$t9, 28($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t9, 4($a0)
+	sw	$t8, 8($a0)
+	sw	$t8, 12($a0)
+	sw	$t8, 16($a0)
+	sw	$t9, 20($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t8, 12($a0)
+	sw	$t8, 16($a0)
+
+	jr	$ra
+# ------------------------------------
 	
 	
