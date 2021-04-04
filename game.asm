@@ -96,7 +96,7 @@ main:
 		# all the stars
 		jal	init_stars
 		# initialize all the rocks positions to 0, so they can be added in slowly
-		# jal	init_rocks
+		jal	init_rocks
 		
 	main_loop:
 		# ------------------------------------
@@ -113,7 +113,7 @@ main:
 			# shift stars
 			jal shift_stars
 			# shift rocks
-			# jal shift_rocks
+			jal shift_rocks
 		# ------------------------------------
 		
 		# ------------------------------------
@@ -277,18 +277,41 @@ init_stars:
 # ------------------------------------
 # initialize rock positions to just 0 and add them in slowly
 	# use:
-		# $t0: current star address
+		# $t0: current rock address
 		# $t1: address of block right after the array
+		# $t2: random position for current rock
 init_rocks:
 	la	$t0, rocks
 	la	$t1, rocks
-	addi	$t1, $t1, NUM_ROCKS
+	addi	$t1, $t1, NUM_ROCKS						# address of the block right after the array, this is where we stop
+	addi	$sp, $sp, -8							# use stack to hold $t0 and $ra when call draw_star
+	sw	$ra, 4($sp)		
+	
 	init_rocks_loop:
-		sw	$zero, 0($t0)
+		# get random shift for the rock position
+		li	$v0, 42
+		li	$a0, 0
+		li	$a1, SIZE
+		syscall
+		# pseudo-random number is in $a0
+		# let this be the position of the current rock
+		sll	$a0, $a0, 2						# multiply that shift by 4
+		addi	$a0, $a0, DISPLAY_FIRST_ADDRESS			 	# add it to the first address of the image
+		sw	$a0, 0($t0)						# set that address to be the position of the current star
+		# save $t0 and $ra
+		# sw	$t0, 0($sp)
+		# call draw star
+		jal	draw_rock
+		# restore $t0 and $ra						draw the star at $a0 position
+		# lw	$t0, 0($sp)
+		# set the next star
 		addi	$t0, $t0, 4
-		beq	$t0, $t1, init_rocks_loop_done
+		beq	$t0, $t1, init_rocks_loop_done				# stop once we've set all the stars
+		j init_rocks_loop
 	init_rocks_loop_done:
-		jr	$ra
+		lw	$ra, 4($sp)		
+		addi	$sp, $sp, 8
+		jr	$ra							# jump to $ra
 # ------------------------------------
 
 # ------------------------------------
@@ -313,15 +336,15 @@ shift_stars:
 			move 	$a1, $a0
 			li	$a2, -4
 			# save needed values
-			sw	$t0, 0($sp)
-			sw	$t1, 4($sp)
-			sw	$t2, 8($sp)
+			# sw	$t0, 0($sp)
+			# sw	$t1, 4($sp)
+			# sw	$t2, 8($sp)
 			# call
 			jal	clear
 			# restore needed values
-			lw	$t0, 0($sp)
-			lw	$t1, 4($sp)
-			lw	$t2, 8($sp)
+			# lw	$t0, 0($sp)
+			# lw	$t1, 4($sp)
+			# lw	$t2, 8($sp)
 		# only shift if they are not in the left column
 			li	$t9, SHIFT_NEXT_ROW
 			div	$t2, $t9					# $t2 / $t9
@@ -332,15 +355,15 @@ shift_stars:
 		shift_stars_redraw:
 			move 	$a0, $t2
 			# save needed values
-			sw	$t0, 0($sp)
-			sw	$t1, 4($sp)
-			sw	$t2, 8($sp)
+			# sw	$t0, 0($sp)
+			# sw	$t1, 4($sp)
+			# sw	$t2, 8($sp)
 			# call
 			jal	draw_star
 			# restore needed values
-			lw	$t0, 0($sp)
-			lw	$t1, 4($sp)
-			lw	$t2, 8($sp)
+			# lw	$t0, 0($sp)
+			# lw	$t1, 4($sp)
+			# lw	$t2, 8($sp)
 		# update the position of that star and go to next star
 		sw	$t2, 0($t0)
 		addi	$t0, $t0, 4
@@ -363,7 +386,7 @@ shift_stars:
 			mflo	$t9						# we got y position in left column
 			addi	$t9, $t9, -4
 			addi	$t9, $t9, DISPLAY_FIRST_ADDRESS
-			# now we have position fot new star
+			# now we have position for new star
 			move 	$t2, $t9
 			j shift_stars_redraw		
 	shift_stars_loop_done:
@@ -378,50 +401,41 @@ shift_stars:
 		# $t0: current rock address
 		# $t1: address of block right after the array
 		# $t2: position of current rock
-		# $t3: saw a 0
 		# $t9: temp
 shift_rocks:
 	la	$t0, rocks
 	la	$t1, rocks
 	addi	$t1, $t1, NUM_ROCKS
-	li	$t3, 0								# haven't seen a 0 yet
-	
 	# make room on the stack to store needed values
-	addi	$sp, $sp, -20
-	sw	$ra, 16($sp)							# store this function's $ra for later	
+	addi	$sp, $sp, -16
+	sw	$ra, 12($sp)							# store this function's $ra for later	
 	
 	shift_rocks_loop:
 		lw	$t2, 0($t0)
-		# if it is 0, we want to add just one
-		beq	$t2, $zero, shift_rocks_zero
 		# clear previous spot
-		shift_rocks_loop_clear:
 			move 	$a0, $t2
-			move 	$a1, $t2
-			addi 	$a1, $a1, SHIFT_ROCK_LAST
-			# if this sets it past the last address of the screen, then set the last to be the last
+			move 	$a1, $a0
+			addi	$a1, $a1, SHIFT_ROCK_LAST
 			li	$t9, DISPLAY_LAST_ADDRESS
-			blt	$a1, $t9, shift_rocks_loop_clear_end_not
-				li	$a1, DISPLAY_LAST_ADDRESS		# if it is, set it tp the last address
-			shift_rocks_loop_clear_end_not:
+			blt	$a1, $t9, full_rock
+			li	$a1, DISPLAY_LAST_ADDRESS
+			full_rock:
 			li	$a2, -ROCK_WIDTH
 			# save needed values
 			# sw	$t0, 0($sp)
 			# sw	$t1, 4($sp)
 			# sw	$t2, 8($sp)
-			# sw	$t3, 12($sp)
 			# call
 			jal	clear
 			# restore needed values
 			# lw	$t0, 0($sp)
 			# lw	$t1, 4($sp)
 			# lw	$t2, 8($sp)
-			# lw	$t3, 12($sp)
 		# only shift if they are not in the left column
 			li	$t9, SHIFT_NEXT_ROW
 			div	$t2, $t9					# $t2 / $t9
 			mfhi	$t9						# $t9 = $t2 mod $t9
-			beq	$t9, $zero, shift_stars_reset			# if the star is in the left column, we need to reset it
+			beq	$t9, $zero, shift_rocks_reset			# if the star is in the left column, we need to reset it
 			addi	$t2, $t2, -4					# else move left
 		# redraw new position
 		shift_rocks_redraw:
@@ -430,53 +444,40 @@ shift_rocks:
 			# sw	$t0, 0($sp)
 			# sw	$t1, 4($sp)
 			# sw	$t2, 8($sp)
-			# sw	$t3, 12($sp)
 			# call
 			jal	draw_rock
 			# restore needed values
 			# lw	$t0, 0($sp)
 			# lw	$t1, 4($sp)
 			# lw	$t2, 8($sp)
-			# lw	$t3, 12($sp)
-		# update the position of that rock and go to next star
-		shift_rocks_next:
-			sw	$t2, 0($t0)
-			addi	$t0, $t0, 4
+		# update the position of that rocks and go to next rock
+		sw	$t2, 0($t0)
+		addi	$t0, $t0, 4
 		# if we are at the block right after the array, we are done, else continue
 		beq	$t0, $t1, shift_rocks_loop_done
 		j	shift_rocks_loop
 
 		# find position for new star
 		shift_rocks_reset:
-			# use random to get new value for star on the right
+			# use random to get new value for rock on the right
 			li	$v0, 42
 			li	$a0, 0
-			li	$a1, NUM_ROCKS
+			li	$a1, HEIGHT
 			syscall
 			# pseudo-random number is in $a0
 			# let this be the position of the current rock in the right most column
 			addi	$a0, $a0, 1
-			addi	$a0, $a0, ROCK_HEIGHT
 			li	$t9, SHIFT_NEXT_ROW
-			mult	$t9, $a0
-			mflo	$t9						# we got y position in left column
-			li	$a0, ROCK_HEIGHT
 			mult	$t9, $a0
 			mflo	$t9						# we got y position in left column
 			addi	$t9, $t9, -4
 			addi	$t9, $t9, DISPLAY_FIRST_ADDRESS
-			# now we have position for new star
-			move 	$t2, $t9					# put new current position in $t2
-			j shift_rocks_redraw	
-
-		shift_rocks_zero:
-			bne	$t3, $zero, shift_rocks_next			# if we've seen a 0, just skip it
-			addi	$t3, $t3, 1
-			b shift_rocks_reset					# else add a new rock
-				
+			# now we have position for new rock
+			move 	$t2, $t9
+			j shift_rocks_redraw		
 	shift_rocks_loop_done:
-		lw	$ra, 16($sp)						# restore this functions $ra
-		addi	$sp, $sp, 20						# put the stack pointer back
+		lw	$ra, 12($sp)						# restore this functions $ra
+		addi	$sp, $sp, 16						# put the stack pointer back
 		jr	$ra
 # ------------------------------------
 
