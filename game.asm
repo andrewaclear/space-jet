@@ -64,6 +64,9 @@
 .eqv	NUM_STARS		160						# 40 stars (40*4)
 .eqv	NUM_ROCKS		20						# 5 rocks (5*4)
 
+.eqv	STAR_ROCK_PARLX		3
+.eqv	WAIT_MS			12
+
 .data
 # variables
 # use arrays for storing obstacle locations
@@ -93,7 +96,7 @@ main:
 		li	$s1, DISPLAY_MIDLFT_ADDRESS
 		li	$s0, DISPLAY_LAST_ADDRESS				# make the previous position some else (I just put the last pixel)
 		addi	$s0, $s0, -SHIFT_NEXT_ROW
-		li	$s2, 4
+		li	$s2, STAR_ROCK_PARLX
 		
 		
 		# all the stars
@@ -113,11 +116,11 @@ main:
 		# ------------------------------------\
 		# Update obstacle location.
 		main_update:
-			# shift stars every four loops
+			# shift stars every four loops (parallax effect)
 			addi	$s2, $s2, -1
 			bne	$s2, $zero, main_dont_shift_stars
 			jal shift_stars
-			li	$s2, 4
+			li	$s2, STAR_ROCK_PARLX
 			main_dont_shift_stars:
 			# shift rocks
 			jal shift_rocks
@@ -128,6 +131,8 @@ main:
 		# obstacles).
 		main_collision:
 			# check if ship is colliding with any ship
+			# jal	rock_collide
+			
 		# ------------------------------------
 		
 		# ------------------------------------
@@ -163,7 +168,7 @@ main:
 		main_sleep:
 			# Wait one second (20 milliseconds)
 			li	$v0, 32
-			li	$a0, 20
+			li	$a0, WAIT_MS
 			syscall
 		# ------------------------------------
 
@@ -240,6 +245,98 @@ keypress:
 	keypress_done:
 		jr	$ra							# jump to ra
 # ------------------------------------
+
+
+
+# COLLIDE
+
+# ------------------------------------
+# check if the ship has smashed into any rocks
+	# use:
+		# $t0: current rock address
+		# $t1: address of block right after the array
+		# $t2: position of current rock (and corner we are checking)
+		# --
+		# $t3: top-left of current rock    --- then x_top-left
+		# $t4:                             --- then y_top-left
+		# $t5: top-right of current rock   --- then x_top-right
+		# $t6: bottom-left of current rock --- then y_bottom-left			# don't need bottom-right      $t6: bottom-right of current rock
+		# --
+		# $t7: corner of ship we are looking at  --- then x_ship
+		#      top-left of ship
+		#      top-right of ship
+		#      bottom-left of ship
+		#      bottom-right of ship
+		# $t8:                                   --- then y_ship
+	# assumes:
+		# $s1: contains the current ship position
+rock_collide:
+	# load rocks array
+	la	$t0, rocks
+	la	$t1, rocks
+	addi	$t1, $t1, NUM_ROCKS
+	addi	$sp, $sp, -4
+	sw	$ra, 0($sp)							# store this function's $ra for later	
+
+	move 	$a0, $s1							# set top-left
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	addi	$a0, $a0, 4	# 1 to the left
+	move 	$a1, $a0							# top-right
+	addi	$a1, $a1, SHIFT_NEXT_ROW
+	addi	$a1, $a1, 36	# 9 more to the left
+	move 	$a2, $a0							# bottom-left
+	addi	$a2, $a2, SHIFT_NEXT_ROW
+	addi	$a2, $a2, SHIFT_NEXT_ROW
+	move 	$a3, $a2							# bottom-right of ship
+	addi	$a3, $a3, 36	# 9 more to the left
+	
+	# for each rock
+	rock_collide_loop:
+		# get position in $t0, put it in $t2
+		lw	$t2, 0($t0)
+		# check if the ship box at $s1 has overlap with the rock at position $t2
+			# get the corners of the rock
+				move 	$t3, $t2				# set top-left
+				addi	$t3, $t3, SHIFT_NEXT_ROW
+				addi	$t3, $t3, 4	# 1 to the left
+				move 	$t4, $t3				# top-right
+				addi	$t4, $t4, 20	# 5 more to the left
+				move 	$t5, $t3				# bottom-left
+				addi	$t5, $t5, SHIFT_NEXT_ROW
+				addi	$t5, $t5, SHIFT_NEXT_ROW
+				addi	$t5, $t5, SHIFT_NEXT_ROW
+				addi	$t5, $t5, SHIFT_NEXT_ROW
+				move 	$t6, $t5				# bottom-right of ship
+				addi	$t5, $t5, 16	# 4 more to the left
+			# check if top-left of ship is in the rock box
+				# get top-left of ship x,y
+				# x_ship < 
+			# if yes, draw_explosion
+		# go to next rock, increment $t0
+		# break when done, $t0==$t1
+	jr	$ra
+# ------------------------------------
+
+# ------------------------------------
+# get x,y of pixel
+	# $a0: pixel position on screen
+	# returns:
+		# $v0: x
+		# $v1: y
+	# use: 
+		# $t9: temp
+get_xy:
+	addi	$a0, $a0, -DISPLAY_FIRST_ADDRESS				# get the relative position
+	li	$t9, SHIFT_NEXT_ROW
+	div	$a0, $t9							# $a0 / $t9
+	mflo	$v1								# $v1 = y = floor($a0 / $t9) 
+	mfhi	$v0								# $v0 = x = $a0 mod $t9 
+	jr	$ra
+# ------------------------------------
+
+
+
+# STARS and ROCKS
 
 # ------------------------------------
 # initialize the stars
@@ -489,6 +586,11 @@ shift_rocks:
 # ------------------------------------
 
 
+
+
+
+
+
 # DRAW functions:
 
 # ------------------------------------
@@ -576,6 +678,14 @@ draw_ship:
 
 	jr	$ra								# jump to 
 # ------------------------------------
+
+# ------------------------------------
+# draw "band" when ship smashes rock
+	# $a0: position
+draw_explosion:
+
+# ------------------------------------
+
 
 # ------------------------------------
 # draw star at given position
