@@ -85,6 +85,7 @@ main:
 	# main variables
 		# $s0: previous ship location
 		# $s1: ship location
+		# $s2: star shift increment
 		# $t9: temp
 
 	# initialization:
@@ -92,6 +93,8 @@ main:
 		li	$s1, DISPLAY_MIDLFT_ADDRESS
 		li	$s0, DISPLAY_LAST_ADDRESS				# make the previous position some else (I just put the last pixel)
 		addi	$s0, $s0, -SHIFT_NEXT_ROW
+		li	$s2, 4
+		
 		
 		# all the stars
 		jal	init_stars
@@ -110,8 +113,12 @@ main:
 		# ------------------------------------\
 		# Update obstacle location.
 		main_update:
-			# shift stars
+			# shift stars every four loops
+			addi	$s2, $s2, -1
+			bne	$s2, $zero, main_dont_shift_stars
 			jal shift_stars
+			li	$s2, 4
+			main_dont_shift_stars:
 			# shift rocks
 			jal shift_rocks
 		# ------------------------------------
