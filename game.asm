@@ -6,30 +6,42 @@
 # Student: Andrew D'Amario, 1006618947, damario4
 #
 # Bitmap Display Configuration:
-# - Unit width in pixels: 8 (update this as needed)
-# - Unit height in pixels: 8 (update this as needed)
-# - Display width in pixels: 256 (update this as needed)# - Display height in pixels: 256 (update this as needed)
+# - Unit width in pixels: 8
+# - Unit height in pixels: 8
+# - Display width in pixels: 512
+# - Display height in pixels: 256
 # - Base Address for Display: 0x10008000 ($gp)
 #
 # Which milestones have been reached in this submission?
 # (See the assignment handout for descriptions of the milestones)
-# - Milestone 1/2/3/4 (choose the one the applies)
+# - Milestone 1 - done
+# - Milestone 2 - done
+# - Milestone 3 - in-progress
+# - Milestone 4 - in-progress
 #
 # Which approved features have been implemented for milestone 4?
 # (See the assignment handout for the list of additional features)
-# 1. (fill in the feature, if any)
-# 2. (fill in the feature, if any)
-# 3. (fill in the feature, if any)
+# 1. Smooth graphics: 
+# 	- minimized redrawing and clearing to only specific places where needed
+# 	- efficiently used and reused registers, and minimized use of memory for optimal speed 
+# 2.
+# 3.
+# ... (add more if necessary)
+# My features: 
+# 1. added Stars in the background
+# 2. parallax with the shift of stars and rocks so that it gives the feel that you are flying (rocks move faster)
 # ... (add more if necessary)
 #
 # Link to video demonstration for final submission:
 # - (insert YouTube / MyMedia / other URL here). Make sure we can view it!
 #
 # Are you OK with us sharing the video with people outside course staff?
-# - yes / no / yes, and please share this project github link as well!
+# - yes :)
+# - and please share this project github link as well!
 #
 # Any additional information that the TA needs to know:
-# - (write here, if any)
+# - Have fun! I like to be kind to my TA's and let them has some fun!
+#   (P.S. Tell me your high score)
 #
 #####################################################################
 
@@ -61,13 +73,15 @@
 # .eqv	COLOUR_YELLOW		0x005c7173
 .eqv	COLOUR_YELLOW		0x007b979a
 # .eqv	COLOUR_EXPLOSION	0x00e7721f
-.eqv	COLOUR_EXPLOSION	0x00c8b100
+.eqv	COLOUR_EXPLOSION	0x00ffa006
 
 .eqv	NUM_STARS		160						# 40 stars (40*4)
 .eqv	NUM_ROCKS		20						# 5 rocks (5*4)
 
 .eqv	STAR_ROCK_PARLX		3
-.eqv	WAIT_MS			18
+.eqv	WAIT_MS			15
+.eqv	WAIT_EXPLOSION_DRAW	6
+
 
 .data
 # variables
@@ -87,10 +101,14 @@ main:
 	jal	clear								# jump to clear and save position to $ra
 	# ------------------------------------
 	
-	# main variables
+	# GLOBAL variables
 		# $s0: previous ship location
 		# $s1: ship location
 		# $s2: star shift increment
+		# $s3: 1 if collision happened, 0 if not
+		# $s4: clock (time played)
+
+	# main variables
 		# $t9: temp
 
 	# initialization:
@@ -98,8 +116,10 @@ main:
 		li	$s1, DISPLAY_MIDLFT_ADDRESS
 		li	$s0, DISPLAY_LAST_ADDRESS				# make the previous position some else (I just put the last pixel)
 		addi	$s0, $s0, -SHIFT_NEXT_ROW
+		# stor vs. rock shift ratio
 		li	$s2, STAR_ROCK_PARLX
-		
+		# collision flag
+		li	$s3, 0
 		
 		# all the stars
 		jal	init_stars
@@ -142,9 +162,15 @@ main:
 
 		# ------------------------------------
 		# Erase objects from the old position on the screen.
+			# if ship HIT something, clear
+			beq	$s3, $zero, main_move_check
+			addi	$s3, $s3, -1					# let it show
+			beq	$s3, $zero, main_clear
+		main_move_check:
+			# if ship didn't move, don't clear it
+			beq	$s0, $s1, main_draw
 		main_clear:
-			# clear previous ship
-			beq	$s0, $s1, main_draw				# if ship didn't move, don't clear it
+			# clear previous ship, two rows above, and two rows below (for explosion clean up)
 			move	$a0, $s0
 			addi	$a0, $a0, -SHIFT_NEXT_ROW
 			addi	$a0, $a0, -SHIFT_NEXT_ROW
@@ -162,10 +188,13 @@ main:
 			# redraw ship:
 			move	$a0, $s1
 			jal	draw_ship					# jump to draw_ship and save position to $ra
-			# redraw stars:
+			move 	$s0, $s1					# store previous ship position in $s0
+			# if it has HIT something, draw explosion
+			ble	$s3, $zero, main_sleep
+			move	$a0, $s1
+			jal	draw_explosion
 		# ------------------------------------
 
-		move 	$s0, $s1						# store previous ship position in $s0
 
 		# ------------------------------------
 		# At the end of each iteration, your main loop should sleep 
@@ -211,6 +240,7 @@ keypress:
 	beq	$t0, 0x77, key_w						# ASCII code of 'w' is 0x77
 	beq	$t0, 0x64, key_d						# ASCII code of 'd' is 0x64
 	beq	$t0, 0x73, key_s						# ASCII code of 's' is 0x73
+	beq	$t0, 0x70, key_p						# ASCII code of 'p' is 0x70
 
 	# go left
 	key_a:
@@ -245,6 +275,11 @@ keypress:
 		bgt	$s1, $t3, keypress_done					# if $s1 is in the bottom row, don't go down
 		addi	$s1, $s1, SHIFT_NEXT_ROW				# else, move down
 		addi	$s1, $s1, SHIFT_NEXT_ROW				# else, move down
+		b keypress_done
+
+	key_p:
+		# restart game
+		la	$ra, main
 		b keypress_done
 
 	keypress_done:
@@ -370,6 +405,8 @@ check_collide:
 	blt	$t6, $t8, check_collide_done
 	# if all true, HIT!
 	move 	$a0, $s1
+	# want to draw it for 4 frames: $s3 = 4
+	li	$s3, WAIT_EXPLOSION_DRAW
 	jal	draw_explosion
 	# done
 	check_collide_done:
@@ -753,6 +790,8 @@ draw_ship:
 		# $
 draw_explosion:
 	li	$a1, COLOUR_EXPLOSION
+	# maybe set it more right
+	addi	$a0, $a0, 8
 
 	addi	$a0, $a0, -SHIFT_NEXT_ROW
 	addi	$a0, $a0, -SHIFT_NEXT_ROW
