@@ -278,18 +278,18 @@ rock_collide:
 	addi	$t1, $t1, NUM_ROCKS
 	addi	$sp, $sp, -4
 	sw	$ra, 0($sp)							# store this function's $ra for later	
-
-	move 	$a0, $s1							# set top-left
-	addi	$a0, $a0, SHIFT_NEXT_ROW
-	addi	$a0, $a0, 4	# 1 to the left
-	move 	$a1, $a0							# top-right
-	addi	$a1, $a1, SHIFT_NEXT_ROW
-	addi	$a1, $a1, 36	# 9 more to the left
-	move 	$a2, $a0							# bottom-left
-	addi	$a2, $a2, SHIFT_NEXT_ROW
-	addi	$a2, $a2, SHIFT_NEXT_ROW
-	move 	$a3, $a2							# bottom-right of ship
-	addi	$a3, $a3, 36	# 9 more to the left
+	
+	# move 	$a0, $s1							# set top-left
+	# addi	$a0, $a0, SHIFT_NEXT_ROW
+	# addi	$a0, $a0, 4	# 1 to the left
+	# move 	$a1, $a0							# top-right
+	# addi	$a1, $a1, SHIFT_NEXT_ROW
+	# addi	$a1, $a1, 36	# 9 more to the left
+	# move 	$a2, $a0							# bottom-left
+	# addi	$a2, $a2, SHIFT_NEXT_ROW
+	# addi	$a2, $a2, SHIFT_NEXT_ROW
+	# move 	$a3, $a2							# bottom-right of ship
+	# addi	$a3, $a3, 36	# 9 more to the left
 	
 	# for each rock
 	rock_collide_loop:
@@ -309,7 +309,12 @@ rock_collide:
 				addi	$t5, $t5, SHIFT_NEXT_ROW
 				move 	$t6, $t5				# bottom-right of ship
 				addi	$t5, $t5, 16	# 4 more to the left
-			# check if top-left of ship is in the rock box
+			# check if the three hit points of ship is in the rock box (HIT)
+				# set first ship pixel to 
+				move 	$t7, $s1
+				addi	$t7, $t7, SHIFT_NEXT_ROW
+				addi	$t7, $t7, 16	# 4 left
+				
 				# get top-left of ship x,y
 				# x_ship < 
 			# if yes, draw_explosion
@@ -686,7 +691,6 @@ draw_ship:
 draw_explosion:
 
 # ------------------------------------
-
 
 # ------------------------------------
 # draw star at given position
