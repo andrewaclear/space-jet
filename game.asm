@@ -60,13 +60,14 @@
 # .eqv	COLOUR_YELLOW		0x00dcff30
 # .eqv	COLOUR_YELLOW		0x005c7173
 .eqv	COLOUR_YELLOW		0x007b979a
-.eqv	COLOUR_EXPLOSION	0x00e7721f
+# .eqv	COLOUR_EXPLOSION	0x00e7721f
+.eqv	COLOUR_EXPLOSION	0x00c8b100
 
 .eqv	NUM_STARS		160						# 40 stars (40*4)
-.eqv	NUM_ROCKS		24						# 5 rocks (5*4)
+.eqv	NUM_ROCKS		20						# 5 rocks (5*4)
 
 .eqv	STAR_ROCK_PARLX		3
-.eqv	WAIT_MS			5
+.eqv	WAIT_MS			18
 
 .data
 # variables
@@ -126,28 +127,31 @@ main:
 			# shift rocks
 			jal shift_rocks
 		# ------------------------------------
-		
+				
+		# ------------------------------------
+		# Update other game state and end of game.
+		# ------------------------------------
+	
 		# ------------------------------------
 		# Check for various collisions (e.g., between ship and 
 		# obstacles).
 		main_collision:
 			# check if ship is colliding with a rock
-			# jal	rock_collide
-			
+			jal	rock_collide
 		# ------------------------------------
-		
-		# ------------------------------------
-		# Update other game state and end of game.
-		# ------------------------------------
-		
+
 		# ------------------------------------
 		# Erase objects from the old position on the screen.
 		main_clear:
 			# clear previous ship
 			beq	$s0, $s1, main_draw				# if ship didn't move, don't clear it
 			move	$a0, $s0
+			addi	$a0, $a0, -SHIFT_NEXT_ROW
+			addi	$a0, $a0, -SHIFT_NEXT_ROW
 			move	$a1, $s0
 			addi	$a1, $a1, SHIFT_SHIP_LAST
+			addi	$a1, $a1, SHIFT_NEXT_ROW
+			addi	$a1, $a1, SHIFT_NEXT_ROW
 			li	$a2, -48
 			jal	clear
 		# ------------------------------------
@@ -297,16 +301,16 @@ rock_collide:
 				addi	$t6, $t6, SHIFT_NEXT_ROW
 			# get x,y of corners
 				# get $t3 = x_top-left, $t4 = y_top-left
-				move 	$t3, $a0
+				move 	$a0, $t3
 				jal	get_xy
 				move 	$t3, $v0
 				move 	$t4, $v1
 				# get $t5 = x_top-right
-				move 	$t5, $a0
+				move 	$a0, $t5
 				jal	get_xy
 				move 	$t5, $v0
 				# get $t6 = y_bottom-left
-				move 	$t6, $a0
+				move 	$a0, $t6
 				jal	get_xy
 				move 	$t6, $v1
 			# check if any of the hit points of ship are in the rock box (HIT)
@@ -317,19 +321,19 @@ rock_collide:
 				move 	$t8, $v1
 				# check top-left ship pixel
 				addi	$t7, $t7, 16	# 4 right
-				addi	$t8, $t8, 4	# 1 down
-				# check if it collided
+				addi	$t8, $t8, 1	# 1 down		# NOTE: vertical y moves by 1s!!
+				# check if it collided				#       horizontal x moves by 4s!!
 				jal	check_collide
 				
 				# check top-right ship pixel
 				addi	$t7, $t7, 20	# 5 right
-				addi	$t8, $t8, 4	# 1 down
+				addi	$t8, $t8, 1	# 1 down
 				# check if it collided
 				jal	check_collide
 
 				# check bottom-right ship pixel
 				addi	$t7, $t7, -4	# 1 left
-				addi	$t8, $t8, 4	# 1 down
+				addi	$t8, $t8, 1	# 1 down
 				# check if it collided
 				jal	check_collide
 
