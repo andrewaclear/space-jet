@@ -60,6 +60,7 @@
 # .eqv	COLOUR_YELLOW		0x00dcff30
 # .eqv	COLOUR_YELLOW		0x005c7173
 .eqv	COLOUR_YELLOW		0x007b979a
+.eqv	COLOUR_EXPLOSION	0x00e7721f
 
 .eqv	NUM_STARS		160						# 40 stars (40*4)
 .eqv	NUM_ROCKS		24						# 5 rocks (5*4)
@@ -262,13 +263,8 @@ keypress:
 		# $t5: top-right of current rock   --- then x_top-right
 		# $t6: bottom-left of current rock --- then y_bottom-left			# don't need bottom-right      $t6: bottom-right of current rock
 		# --
-		# $t7: corner of ship we are looking at
-		#      top-left of ship
-		#      top-right of ship
-		#      bottom-left of ship
-		#      bottom-right of ship
-		# $t8:                             --- then x_ship
-		# $t9:                             --- then y_ship
+		# $t7: current ship corner:        --- x_ship
+		# $t8:                             --- y_ship
 	# assumes:
 		# $s1: contains the current ship position
 rock_collide:
@@ -276,20 +272,9 @@ rock_collide:
 	la	$t0, rocks
 	la	$t1, rocks
 	addi	$t1, $t1, NUM_ROCKS
+	# store this function's $ra for later
 	addi	$sp, $sp, -4
-	sw	$ra, 0($sp)							# store this function's $ra for later	
-	
-	# move 	$a0, $s1							# set top-left
-	# addi	$a0, $a0, SHIFT_NEXT_ROW
-	# addi	$a0, $a0, 4	# 1 to the left
-	# move 	$a1, $a0							# top-right
-	# addi	$a1, $a1, SHIFT_NEXT_ROW
-	# addi	$a1, $a1, 36	# 9 more to the left
-	# move 	$a2, $a0							# bottom-left
-	# addi	$a2, $a2, SHIFT_NEXT_ROW
-	# addi	$a2, $a2, SHIFT_NEXT_ROW
-	# move 	$a3, $a2							# bottom-right of ship
-	# addi	$a3, $a3, 36	# 9 more to the left
+	sw	$ra, 0($sp)
 	
 	# for each rock
 	rock_collide_loop:
@@ -297,30 +282,97 @@ rock_collide:
 		lw	$t2, 0($t0)
 		# check if the ship box at $s1 has overlap with the rock at position $t2
 			# get the corners of the rock
-				move 	$t3, $t2				# set top-left
+				# get top-left
+				move 	$t3, $t2
 				addi	$t3, $t3, SHIFT_NEXT_ROW
 				addi	$t3, $t3, 4	# 1 to the left
-				move 	$t4, $t3				# top-right
-				addi	$t4, $t4, 20	# 5 more to the left
-				move 	$t5, $t3				# bottom-left
-				addi	$t5, $t5, SHIFT_NEXT_ROW
-				addi	$t5, $t5, SHIFT_NEXT_ROW
-				addi	$t5, $t5, SHIFT_NEXT_ROW
-				addi	$t5, $t5, SHIFT_NEXT_ROW
-				move 	$t6, $t5				# bottom-right of ship
-				addi	$t5, $t5, 16	# 4 more to the left
-			# check if the three hit points of ship is in the rock box (HIT)
-				# set first ship pixel to 
-				move 	$t7, $s1
-				addi	$t7, $t7, SHIFT_NEXT_ROW
-				addi	$t7, $t7, 16	# 4 left
+				# get top-right
+				move 	$t5, $t3
+				addi	$t5, $t5, 20	# 5 more to the left
+				# get bottom-left
+				move 	$t6, $t3
+				addi	$t6, $t6, SHIFT_NEXT_ROW
+				addi	$t6, $t6, SHIFT_NEXT_ROW
+				addi	$t6, $t6, SHIFT_NEXT_ROW
+				addi	$t6, $t6, SHIFT_NEXT_ROW
+			# get x,y of corners
+				# get $t3 = x_top-left, $t4 = y_top-left
+				move 	$t3, $a0
+				jal	get_xy
+				move 	$t3, $v0
+				move 	$t4, $v1
+				# get $t5 = x_top-right
+				move 	$t5, $a0
+				jal	get_xy
+				move 	$t5, $v0
+				# get $t6 = y_bottom-left
+				move 	$t6, $a0
+				jal	get_xy
+				move 	$t6, $v1
+			# check if any of the hit points of ship are in the rock box (HIT)
+				# get x,y of ship: $t7 = x_ship, $t8 = y_ship
+				move 	$a0, $s1
+				jal	get_xy
+				move 	$t7, $v0
+				move 	$t8, $v1
+				# check top-left ship pixel
+				addi	$t7, $t7, 16	# 4 right
+				addi	$t8, $t8, 4	# 1 down
+				# check if it collided
+				jal	check_collide
 				
-				# get top-left of ship x,y
-				# x_ship < 
-			# if yes, draw_explosion
+				# check top-right ship pixel
+				addi	$t7, $t7, 20	# 5 right
+				addi	$t8, $t8, 4	# 1 down
+				# check if it collided
+				jal	check_collide
+
+				# check bottom-right ship pixel
+				addi	$t7, $t7, -4	# 1 left
+				addi	$t8, $t8, 4	# 1 down
+				# check if it collided
+				jal	check_collide
+
+				# check bottom-left ship pixel
+				addi	$t7, $t7, -20	# 5 left
+				# check if it collided
+				jal	check_collide
+
 		# go to next rock, increment $t0
+		addi	$t0, $t0, 4
 		# break when done, $t0==$t1
+		bne	$t0, $t1, rock_collide_loop
+		
+	# pop saved $ra
+	lw	$ra, 0($sp)
+	addi	$sp, $sp, 4
 	jr	$ra
+# ------------------------------------
+# ------------------------------------
+# direct helper part of rock_collide
+	# uses (does not change): register setup in rock_collide
+check_collide:
+	# save return register $ra
+	addi	$sp, $sp, -4
+	sw	$ra, 0($sp)
+	# check 
+	# x_top-left <= x_ship
+	bgt	$t3, $t7, check_collide_done
+	# x_top-right >= x_ship
+	blt	$t5, $t7, check_collide_done
+	# y_top-left <= y_ship
+	bgt	$t4, $t8, check_collide_done
+	# y_bottom-left >= y_ship
+	blt	$t6, $t8, check_collide_done
+	# if all true, HIT!
+	move 	$a0, $s1
+	jal	draw_explosion
+	# done
+	check_collide_done:
+		# return to saved $ra
+		lw	$ra, 0($sp)
+		addi	$sp, $sp, 4
+		jr	$ra
 # ------------------------------------
 
 # ------------------------------------
@@ -328,7 +380,7 @@ rock_collide:
 	# $a0: pixel position on screen
 	# returns:
 		# $v0: x
-		# $v1: y
+		# $v1: y	NOTE: y counts down!
 	# use: 
 		# $a1: temp
 get_xy:
@@ -604,7 +656,7 @@ shift_rocks:
 	# $a0: start address
 	# $a1: end address
 	# $a2: negative of the width*4 of box to clear
-	# use:
+	# useS:
 		# $t8: COLOUR_NIGHT
 		# $t9: negative increment
 clear:
@@ -632,6 +684,10 @@ clear:
 # ------------------------------------
 # draw ship at a certain position
 	# $a0: position
+	# uses:
+		# $t0, COLOUR_SHIP
+		# $t1, COLOUR_YELLOW
+		# $t2, COLOUR_RED
 draw_ship:
 	li	$t0, COLOUR_SHIP						# $t1 = COLOUR_SHIP
 	li	$t1, COLOUR_YELLOW						# $t1 = COLOUR_YELLOW
@@ -686,15 +742,58 @@ draw_ship:
 # ------------------------------------
 
 # ------------------------------------
-# draw "band" when ship smashes rock
+# draw "bang" when ship smashes rock
 	# $a0: position
+	# uses:
+		# $a1: COLOUR_EXPLOSION
+		# $
 draw_explosion:
+	li	$a1, COLOUR_EXPLOSION
 
+	addi	$a0, $a0, -SHIFT_NEXT_ROW
+	addi	$a0, $a0, -SHIFT_NEXT_ROW
+	sw	$a1, 20($a0)
+	sw	$a1, 24($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 12($a0)
+	sw	$a1, 24($a0)
+	sw	$a1, 28($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 32($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 16($a0)
+	sw	$a1, 28($a0)
+	sw	$a1, 32($a0)
+	sw	$a1, 36($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 8($a0)
+	sw	$a1, 36($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 24($a0)
+	sw	$a1, 32($a0)
+	sw	$a1, 36($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 16($a0)
+	sw	$a1, 28($a0)
+	sw	$a1, 32($a0)
+	sw	$a1, 36($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 20($a0)
+	sw	$a1, 32($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 20($a0)
+	sw	$a1, 24($a0)
+	sw	$a1, 28($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 8($a0)
+	
+	jr	$ra
 # ------------------------------------
 
 # ------------------------------------
 # draw star at given position
 	# $a0: position
+	# uses:
 		# $t9: use temp
 draw_star:
 	li	$t9, COLOUR_STAR
