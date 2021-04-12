@@ -1,4 +1,6 @@
 #####################################################################
+##           SPACE JET by Andrew D'Amario © April 2021             ##
+#####################################################################
 #
 # CSCB58 Winter 2021 Assembly Final Project
 # University of Toronto, Scarborough
@@ -16,32 +18,36 @@
 # (See the assignment handout for descriptions of the milestones)
 # - Milestone 1 - done
 # - Milestone 2 - done
-# - Milestone 3 - in-progress
-# - Milestone 4 - in-progress
+# - Milestone 3 - done
+# - Milestone 4 - done
 #
 # Which approved features have been implemented for milestone 4?
 # (See the assignment handout for the list of additional features)
 # 1. Smooth graphics: 
 # 	- minimized redrawing and clearing to only specific places where needed
 # 	- efficiently used and reused registers, and minimized use of memory for optimal speed 
-# 2.
-# 3.
-# ... (add more if necessary)
+# 2. Scoring system:
+# 	- shows score throughout the game and on the final "game over" screen
+# 3. Increase the difficulty as the game progresses:
+# 	- speed of jet increases every 200 points as caps off at 7ms wait time
 # My features: 
 # 1. added Stars in the background
 # 2. parallax with the shift of stars and rocks so that it gives the feel that you are flying (rocks move faster)
-# ... (add more if necessary)
+# 3. added splash screen before start of game
+# 4. cool darkened neon background for "game over" screen with enjoyable final message
+# 5. more detailed graphics of objects, explosions, numbers, and letters
+# 6. original game music (played in the background in demo video)
 #
 # Link to video demonstration for final submission:
-# - (insert YouTube / MyMedia / other URL here). Make sure we can view it!
+# - ------------------------(insert YouTube / MyMedia / other URL here). Make sure we can view it!
 #
 # Are you OK with us sharing the video with people outside course staff?
 # - yes :)
-# - and please share this project github link as well!
+# - ------------------and please share this project github link as well!
 #
 # Any additional information that the TA needs to know:
-# - Have fun! I like to be kind to my TA's and let them has some fun!
-#   (P.S. Tell me your high score)
+# - Have fun! I like to be kind to my TA's and let them enjoy their marking once in a while!
+#   (P.S. Tell me your high score.)
 #
 #####################################################################
 
@@ -49,9 +55,13 @@
 .eqv	DISPLAY_FIRST_ADDRESS	0x10008000
 # width = 64, height = 32
 .eqv	DISPLAY_LAST_ADDRESS	0x10009FFC					# update this given the values below shift +(64*32-1)*4
-.eqv	DISPLAY_MIDLFT_ADDRESS	0x10008C00					# mid left spot for ship (but jump 2 aligned) +(64*12)*4
+.eqv	DISPLAY_MIDLFT_ADDRESS	0x10008C10					# mid left spot for ship (but jump 2 aligned) +(64*12+4)*4
+.eqv	DISPLAY_SCORE		0x10009AF0					# bottom right corner +(64*27-4)*4
+.eqv	DISPLAY_LIVES		0x100081E8					# top right corner +(64*2-6)*4
+.eqv	DISPLAY_DEAD		0x10008C58					# top right corner +(64*13-42)*4
+.eqv	DISPLAY_SPLASH		0x10008C14					# top right corner +(64*13-59)*4
 # last address shifts
-.eqv	SHIFT_NEXT_ROW		256													# next row shift = width*4 = 64*4
+.eqv	SHIFT_NEXT_ROW		256						# next row shift = width*4 = 64*4
 .eqv	SHIFT_SHIP_LAST		1324						# from top left of ship to bottom right = (64*5+11)*4
 .eqv	SHIFT_ROCK_LAST		1564						# from top left of rock to bottom right = (64*6+7)*4
 # number of pixels
@@ -74,12 +84,17 @@
 .eqv	COLOUR_YELLOW		0x007b979a
 # .eqv	COLOUR_EXPLOSION	0x00e7721f
 .eqv	COLOUR_EXPLOSION	0x00ffa006
+.eqv	COLOUR_HEART		0x00fb91b3
+.eqv	COLOUR_NUMBER		0x0092aed1
+
+.eqv	COLOUR_DIM_SHIFT	1122355						# colour shift 00x00112033
 
 .eqv	NUM_STARS		160						# 40 stars (40*4)
 .eqv	NUM_ROCKS		20						# 5 rocks (5*4)
 
 .eqv	STAR_ROCK_PARLX		3
-.eqv	WAIT_MS			15
+.eqv	INIT_WAIT_MS		23
+.eqv	WAIT_CLOCK		200
 .eqv	WAIT_EXPLOSION_DRAW	6
 
 
@@ -92,7 +107,24 @@ stars:	.space			NUM_STARS					# array of 25 address for all the star locations
 .text
 .globl main
 
+# SPACE JET
+
 main:
+	# ------------------------------------
+	# clear screen
+	li	$a0, DISPLAY_FIRST_ADDRESS
+	li	$a1, DISPLAY_LAST_ADDRESS
+	li	$a2, -SHIFT_NEXT_ROW						# negative width
+	jal	clear								# jump to clear and save position to $ra
+	# ------------------------------------
+
+	# splash screen "SPACE JET"
+	jal draw_splash
+	# wait 2000 milliseconds
+	li	$v0, 32
+	li	$a0, 4000
+	syscall
+
 	# ------------------------------------
 	# clear screen
 	li	$a0, DISPLAY_FIRST_ADDRESS
@@ -106,10 +138,15 @@ main:
 		# $s1: ship location
 		# $s2: star shift increment
 		# $s3: 1 if collision happened, 0 if not
-		# $s4: clock (time played)
+		# $s4: clock (number of frames played)
+		# $s5: number of lives
+		# $s6: wait time (decreases as time goes on)
+		# $s7: wait clock
 
 	# main variables
 		# $t9: temp
+	
+
 
 	# initialization:
 		# ship location
@@ -120,6 +157,14 @@ main:
 		li	$s2, STAR_ROCK_PARLX
 		# collision flag
 		li	$s3, 0
+		# clock starts at -1, since it increments
+		li	$s4, -1
+		# start with 4 lives (each life is worth 10)
+		li	$s5, 40
+		# start with INIT_WAIT_MS
+		li	$s6, INIT_WAIT_MS
+		# start with WAIT_CLOCK cylces for this wait time
+		li	$s7, WAIT_CLOCK
 		
 		# all the stars
 		jal	init_stars
@@ -135,21 +180,46 @@ main:
 		jal	keypress						# jump to keypress and save position to $ra
 		# ------------------------------------
 
-		# ------------------------------------\
+		# ------------------------------------
 		# Update obstacle location.
 		main_update:
 			# shift stars every four loops (parallax effect)
 			addi	$s2, $s2, -1
 			bne	$s2, $zero, main_dont_shift_stars
-			jal shift_stars
+			jal	shift_stars
 			li	$s2, STAR_ROCK_PARLX
 			main_dont_shift_stars:
 			# shift rocks
-			jal shift_rocks
+			jal	shift_rocks
 		# ------------------------------------
 				
 		# ------------------------------------
 		# Update other game state and end of game.
+			# increment clock
+			addi	$s4, $s4, 1
+			# update score
+			li	$a0, DISPLAY_SCORE
+			li	$a1, COLOUR_NUMBER
+			move	$a2, $s4
+			li	$a3, COLOUR_NIGHT
+			jal	draw_number
+			# update lives
+			li	$a0, DISPLAY_LIVES
+			move	$a1, $s5
+			jal	draw_lives
+			# GAME OVER (no more lives)
+			ble	$s5, $zero end
+
+			# decrease wait clock for current wait time
+			addi	$s7, $s7, -1
+			# decrease wait if wait clock is 0
+			bne	$s7, $zero, main_collision
+			# set min wait time to be 7
+			li	$t9, 7
+			beq	$s6, $t9, main_collision
+			# reset clock
+			li	$s7, WAIT_CLOCK
+			addi	$s6, $s6, -1
 		# ------------------------------------
 	
 		# ------------------------------------
@@ -165,6 +235,9 @@ main:
 			# if ship HIT something, clear
 			beq	$s3, $zero, main_move_check
 			addi	$s3, $s3, -1					# let it show
+			# lost a life
+			addi	$s5, $s5, -1
+
 			beq	$s3, $zero, main_clear
 		main_move_check:
 			# if ship didn't move, don't clear it
@@ -201,14 +274,23 @@ main:
 		# for a short time and go back to step 1.
 		main_sleep:
 			# Wait one second (20 milliseconds)
+			# decremennt if 
 			li	$v0, 32
-			li	$a0, WAIT_MS
+			move	$a0, $s6
 			syscall
 		# ------------------------------------
 
 		j main_loop
 # end program
 end:
+	# clear last life
+	li	$a0, DISPLAY_LIVES
+	jal draw_heart_clear
+	# draw dead
+	jal	draw_dead
+	# darken screen
+	jal	draw_dark
+	# end program
 	li	$v0, 10								# $v0 = 10 terminate the program gracefully
 	syscall
 
@@ -226,6 +308,7 @@ end:
 		# $t1: width
 		# $t2: address of first of second row
 		# $t3: address of last of second last row 
+		# $t
 		# $t9: temp
 keypress:
 	li	$t1, SHIFT_NEXT_ROW
@@ -408,6 +491,7 @@ check_collide:
 	# want to draw it for 4 frames: $s3 = 4
 	li	$s3, WAIT_EXPLOSION_DRAW
 	jal	draw_explosion
+	
 	# done
 	check_collide_done:
 		# return to saved $ra
@@ -846,7 +930,7 @@ draw_star:
 
 # ------------------------------------
 # draw rock
-	# $a0: position
+	# use:
 		# $t8: COLOUR_ROCK_DARK
 		# $t9: COLOUR_ROCK_LIGHT
 draw_rock:
@@ -901,5 +985,751 @@ draw_rock:
 
 	jr	$ra
 # ------------------------------------
+
+# ------------------------------------
+# draw dark
+draw_dark:
+	li	$a0, DISPLAY_FIRST_ADDRESS
+	li	$a1, DISPLAY_LAST_ADDRESS
+
+	draw_dark_loop:
+		lw	$t7, 0($a0)
+		addi	$t7, $t7, -COLOUR_DIM_SHIFT
+		sw	$t7, 0($a0)
+		addi	$a0, $a0, 4
+		bgt	$a1, $a0, draw_dark_loop
 	
+	jr	$ra
+# ------------------------------------
+
+
+
+
+
+# ------------------------------------
+# draw DEAD
+	# uses:
+		# $a0: DISPLAY_DEAD
+		# $a1: COLOUR_NUMBER
+		# #t9: hold old $ra
+draw_dead:
+	li	$a1, COLOUR_NUMBER
+	move 	$t9, $ra
+
+	li	$a0, DISPLAY_DEAD
+	jal	draw_D
+	li	$a0, DISPLAY_DEAD
+	addi	$a0, $a0, 20
+	jal	draw_E
+	li	$a0, DISPLAY_DEAD
+	addi	$a0, $a0, 40
+	jal	draw_A
+	li	$a0, DISPLAY_DEAD
+	addi	$a0, $a0, 60
+	jal	draw_D
 	
+	jr	$t9
+# ------------------------------------
+
+# ------------------------------------
+# draw slash
+		# $a0: DISPLAY_SPLASH
+		# $a1: COLOUR_NUMBER
+		# #t9: hold old $ra
+draw_splash:
+	li	$a1, COLOUR_NUMBER
+	move 	$t9, $ra
+
+	li	$a0, DISPLAY_SPLASH
+	jal	draw_S
+	li	$a0, DISPLAY_SPLASH
+	addi	$a0, $a0, 20
+	jal	draw_P
+	li	$a0, DISPLAY_SPLASH
+	addi	$a0, $a0, 40
+	jal	draw_A
+	li	$a0, DISPLAY_SPLASH
+	addi	$a0, $a0, 60
+	jal	draw_C
+	li	$a0, DISPLAY_SPLASH
+	addi	$a0, $a0, 80
+	jal	draw_E
+	li	$a0, DISPLAY_SPLASH
+	addi	$a0, $a0, 108
+	jal	draw_J
+	li	$a0, DISPLAY_SPLASH
+	addi	$a0, $a0, 128
+	jal	draw_E
+	li	$a0, DISPLAY_SPLASH
+	addi	$a0, $a0, 148
+	jal	draw_T
+
+	li	$a0, DISPLAY_SPLASH
+	addi	$a0, $a0, 168
+	jal	draw_ship
+
+	jr	$t9
+# ------------------------------------
+
+
+
+
+
+
+# DRAW LIVES
+
+# ------------------------------------
+# draw lives
+	# $a0: position
+	# $a1: number of lives
+draw_lives:
+	b	draw_heart
+	draw_lives_next:
+	addi	$a1, $a1, -10
+	addi	$a0, $a0, -SHIFT_NEXT_ROW
+	addi	$a0, $a0, -SHIFT_NEXT_ROW
+	addi	$a0, $a0, -SHIFT_NEXT_ROW
+	addi	$a0, $a0, -24
+	bgt	$a1, $zero, draw_lives
+	# clear last heart
+	b draw_heart_clear
+	draw_lives_end:
+	jr	$ra
+# ------------------------------------
+
+# ------------------------------------
+# draw heart
+	# $a0: position
+		# $t9: COLOUR_HEART
+draw_heart:
+	li	$t9, COLOUR_HEART
+	
+	sw	$t9, 0($a0)
+	sw	$t9, 4($a0)
+	sw	$t9, 12($a0)
+	sw	$t9, 16($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t9, 0($a0)
+	sw	$t9, 4($a0)
+	sw	$t9, 8($a0)
+	sw	$t9, 12($a0)
+	sw	$t9, 16($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t9, 4($a0)
+	sw	$t9, 8($a0)
+	sw	$t9, 12($a0)	
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t9, 8($a0)
+	
+	b	draw_lives_next
+# ------------------------------------
+
+# ------------------------------------
+# draw heart clear
+	# $a0: position
+		# $t9: COLOUR_NIGHT
+draw_heart_clear:
+	li	$t9, COLOUR_NIGHT
+	
+	sw	$t9, 0($a0)
+	sw	$t9, 4($a0)
+	sw	$t9, 12($a0)
+	sw	$t9, 16($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t9, 0($a0)
+	sw	$t9, 4($a0)
+	sw	$t9, 8($a0)
+	sw	$t9, 12($a0)
+	sw	$t9, 16($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t9, 4($a0)
+	sw	$t9, 8($a0)
+	sw	$t9, 12($a0)	
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$t9, 8($a0)
+	
+	b	draw_lives_end
+# ------------------------------------
+
+
+
+
+
+# DRAW NUMBERS
+
+# ------------------------------------
+# draw number
+	# $a0: position
+	# $a1: COLOUR_NUMBER
+	# $a2: number to draw
+	# $a3: COLOUR_NIGHT
+		# $t7: temp
+		# $t8: tens place we are looking at
+		# $t9: current digit to draw 
+draw_number:
+	li	$t8, 10
+	div	$a2, $t8							# $a2 / $t8
+	mflo	$a2								# $a2 = floor($a2 / $t8) 
+	mfhi	$t9								# $t9 = $a2 mod $t8 
+
+	# if both the division and the remainder are 0 than stop
+	bne	$a2, $zero, draw_number_zero
+	bne	$t9, $zero, draw_number_zero
+	jr	$ra
+
+	draw_number_zero: 
+	li	$t7, 0
+	bne	$t9, $t7, draw_number_one
+	b	draw_zero
+	draw_number_one: 
+	li	$t7, 1
+	bne	$t9, $t7, draw_number_two
+	b	draw_one
+	draw_number_two: 
+	li	$t7, 2
+	bne	$t9, $t7, draw_number_three
+	b	draw_two
+	draw_number_three: 
+	li	$t7, 3
+	bne	$t9, $t7, draw_number_four
+	b	draw_three
+	draw_number_four: 
+	li	$t7, 4
+	bne	$t9, $t7, draw_number_five
+	b	draw_four
+	draw_number_five: 
+	li	$t7, 5
+	bne	$t9, $t7, draw_number_six
+	b	draw_five
+	draw_number_six: 
+	li	$t7, 6
+	bne	$t9, $t7, draw_number_seven
+	b	draw_six
+	draw_number_seven: 
+	li	$t7, 7
+	bne	$t9, $t7, draw_number_eight
+	b	draw_seven
+	draw_number_eight: 
+	li	$t7, 8
+	bne	$t9, $t7, draw_number_nine
+	b	draw_eight
+	draw_number_nine: 
+	li	$t7, 9
+	bne	$t9, $t7, draw_number_next
+	b	draw_nine
+
+	draw_number_next:
+	# shift draw number position
+	addi	$a0, $a0, -SHIFT_NEXT_ROW
+	addi	$a0, $a0, -SHIFT_NEXT_ROW
+	addi	$a0, $a0, -SHIFT_NEXT_ROW
+	addi	$a0, $a0, -SHIFT_NEXT_ROW
+	addi	$a0, $a0, -16
+
+	b draw_number
+
+# ------------------------------------
+
+# ------------------------------------
+# draw_zero
+	# $a0: position
+	# $a1: COLOUR_NUMBER
+	# $a3: COLOUR_NIGHT
+draw_zero:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+
+	b	draw_number_next
+# ------------------------------------
+
+# ------------------------------------
+# draw_one
+	# $a0: position
+	# $a1: COLOUR_NUMBER
+	# $a3: COLOUR_NIGHT
+draw_one:
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+
+	b	draw_number_next
+# ------------------------------------
+
+# ------------------------------------
+# draw_two
+	# $a0: position
+	# $a1: COLOUR_NUMBER
+	# $a3: COLOUR_NIGHT
+draw_two:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a3, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+
+	b	draw_number_next
+# ------------------------------------
+
+# ------------------------------------
+# draw_three
+	# $a0: position
+	# $a1: COLOUR_NUMBER
+	# $a3: COLOUR_NIGHT
+draw_three:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+
+	b	draw_number_next
+# ------------------------------------
+
+# ------------------------------------
+# draw_four
+	# $a0: position
+	# $a1: COLOUR_NUMBER
+	# $a3: COLOUR_NIGHT
+draw_four:
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+
+	b	draw_number_next
+# ------------------------------------
+
+# ------------------------------------
+# draw_five
+	# $a0: position
+	# $a1: COLOUR_NUMBER
+	# $a3: COLOUR_NIGHT
+draw_five:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a3, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+
+	b	draw_number_next
+# ------------------------------------
+
+# ------------------------------------
+# draw_six
+	# $a0: position
+	# $a1: COLOUR_NUMBER
+	# $a3: COLOUR_NIGHT
+draw_six:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a3, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+
+	b	draw_number_next
+# ------------------------------------
+
+# ------------------------------------
+# draw_seven
+	# $a0: position
+	# $a1: COLOUR_NUMBER
+	# $a3: COLOUR_NIGHT
+draw_seven:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+
+	b	draw_number_next
+# ------------------------------------
+
+# ------------------------------------
+# draw_eight
+	# $a0: position
+	# $a1: COLOUR_NUMBER
+	# $a3: COLOUR_NIGHT
+draw_eight:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+
+	b	draw_number_next
+# ------------------------------------
+
+# ------------------------------------
+# draw_nine
+	# $a0: position
+	# $a1: COLOUR_NUMBER
+	# $a3: COLOUR_NIGHT
+draw_nine:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a3, 0($a0)
+	sw	$a3, 4($a0)
+	sw	$a1, 8($a0)
+
+	b	draw_number_next
+# ------------------------------------
+
+
+
+
+
+
+# DRAW LETTERS
+
+# ------------------------------------
+# draw A
+	# $a0: position
+	# $a1: colour
+draw_A:
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	
+	jr	$ra
+# ------------------------------------
+
+# ------------------------------------
+# draw C
+	# $a0: position
+	# $a1: colour
+draw_C:
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	
+	jr	$ra
+# ------------------------------------
+
+# ------------------------------------
+# draw D
+	# $a0: position
+	# $a1: colour
+draw_D:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	
+	jr	$ra
+# ------------------------------------
+
+# ------------------------------------
+# draw E
+	# $a0: position
+	# $a1: colour
+draw_E:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	sw	$a1, 12($a0)
+	
+	jr	$ra
+# ------------------------------------
+
+# ------------------------------------
+# draw J
+	# $a0: position
+	# $a1: colour
+draw_J:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	
+	jr	$ra
+# ------------------------------------
+
+# ------------------------------------
+# draw P
+	# $a0: position
+	# $a1: colour
+draw_P:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	
+	jr	$ra
+# ------------------------------------
+
+# ------------------------------------
+# draw S
+	# $a0: position
+	# $a1: colour
+draw_S:
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	
+	jr	$ra
+# ------------------------------------
+
+# ------------------------------------
+# draw T
+	# $a0: position
+	# $a1: colour
+draw_T:
+	sw	$a1, 0($a0)
+	sw	$a1, 4($a0)
+	sw	$a1, 8($a0)
+	sw	$a1, 12($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 8($a0)
+	addi	$a0, $a0, SHIFT_NEXT_ROW
+	sw	$a1, 8($a0)
+	
+	jr	$ra
+# ------------------------------------
