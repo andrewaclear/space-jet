@@ -39,11 +39,11 @@
 # 6. original game music (played in the background in demo video)
 #
 # Link to video demonstration for final submission:
-# - ------------------------(insert YouTube / MyMedia / other URL here). Make sure we can view it!
+# - https://youtu.be/b8rDmOi4d7Q
 #
 # Are you OK with us sharing the video with people outside course staff?
 # - yes :)
-# - ------------------and please share this project github link as well!
+# - https://github.com/andrewaclear/SpaceJet-AssemblyGame
 #
 # Any additional information that the TA needs to know:
 # - Have fun! I like to be kind to my TA's and let them enjoy their marking once in a while!
