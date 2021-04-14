@@ -49,6 +49,9 @@
 # - Have fun! I like to be kind to my TA's and let them enjoy their marking once in a while!
 #   (P.S. Tell me your high score.)
 #
+# Credits: 
+# - Thomas - creator of name and cocreator of final message
+#
 #####################################################################
 
 # defined CONSTANTS
