@@ -7,6 +7,9 @@
 #
 # Student: Andrew D'Amario
 #
+# Game play setup walk through:
+# - https://youtu.be/BgLWuG2kp5A
+# 
 # Bitmap Display Configuration:
 # - Unit width in pixels: 8
 # - Unit height in pixels: 8
