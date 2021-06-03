@@ -16,6 +16,11 @@
 # - Display width in pixels: 512
 # - Display height in pixels: 256
 # - Base Address for Display: 0x10008000 ($gp)
+# 
+# To play with faster keyboard repeat:
+# - GNOME: 
+# 	- open dconf editor
+#	- set "/org/gnome/desktop/peripherals/keyboard/delay" to 100
 #
 # Which milestones have been reached in this submission?
 # (See the assignment handout for descriptions of the milestones)
@@ -296,10 +301,20 @@ end:
 	jal	draw_dead
 	# darken screen
 	jal	draw_dark
+
+	user_wait:
+		# ------------------------------------
+		# wait for user input
+		li	$a0, 0xffff0000
+		jal	keypress						# jump to keypress and save position to $ra
+		# ------------------------------------
+		b user_wait
+
+
+quit:
 	# end program
 	li	$v0, 10								# $v0 = 10 terminate the program gracefully
 	syscall
-
 
 
 
@@ -314,8 +329,7 @@ end:
 		# $t1: width
 		# $t2: address of first of second row
 		# $t3: address of last of second last row 
-		# $t
-		# $t9: temp
+		# $t	9: temp
 keypress:
 	li	$t1, SHIFT_NEXT_ROW
 	li	$t2, DISPLAY_FIRST_ADDRESS
@@ -330,6 +344,7 @@ keypress:
 	beq	$t0, 0x64, key_d						# ASCII code of 'd' is 0x64
 	beq	$t0, 0x73, key_s						# ASCII code of 's' is 0x73
 	beq	$t0, 0x70, key_p						# ASCII code of 'p' is 0x70
+	beq	$t0, 0x71, key_q						# ASCII code of 'q' is 0x71
 
 	# go left
 	key_a:
@@ -369,6 +384,11 @@ keypress:
 	key_p:
 		# restart game
 		la	$ra, main
+		b keypress_done
+
+	key_q:
+		# end game
+		la	$ra, quit
 		b keypress_done
 
 	keypress_done:
