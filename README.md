@@ -1,6 +1,6 @@
 # SpaceJet-AssemblyGame
 
-SPACE JET by Andrew D'Amario © April 2021
+> SPACE JET by Andrew D'Amario © April 2021
 
 #### Game play setup walk through:
 
