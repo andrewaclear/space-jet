@@ -1,10 +1,11 @@
-# SpaceJet-AssemblyGame
+# SpaceJet
 
 > SPACE JET by Andrew D'Amario © April 2021
 
-#### Game play setup walk through:
+SpaceJet is a sidescroller Assembly game written for the MIPS processor where you dodge astroids as you fly your jet through space.
 
-<iframe width="800" height="450" src="https://www.youtube.com/embed/BgLWuG2kp5A" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+#### Game play setup walk through:
+https://www.youtube.com/embed/BgLWuG2kp5A
 
 ![](images/ingame.png)
 
