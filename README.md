@@ -2,7 +2,7 @@
 
 > by Andrew D'Amario © CSCB58 Project ~ April 2021
 
-space-jet is a sidescroller Assembly game written for the MIPS processor where you dodge astroids as you fly your jet through space.
+space-jet is a sidescroller Assembly game written for the MIPS processor. See how high of a scorce you can get as you fly through space dodging astroids!
 
 #### Game play setup walk through:
 https://www.youtube.com/embed/BgLWuG2kp5A
